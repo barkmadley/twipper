@@ -19,7 +19,7 @@ module EchoMiddleware : Middleware =
   end
 
 (** [runmiddleware]
-  * convert the string Pipe.Reader.t option to [`Eof|`Ok of string] Deferred.t
+  * convert the string Pipe.Reader.t option to string list Deferred.t
   * strip the socket option as I am currently not using it.
   *)
 let runmiddleware middleware ~body _socket _request =
