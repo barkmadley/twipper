@@ -3,25 +3,42 @@ open Async.Std
 
 (** [Middleware] lazy body + request -> lazy response *)
 module type Middleware =
-  sig
-    val run : body:string Deferred.t -> Cohttp_async.Request.t -> Cohttp_async.Server.response Deferred.t
-  end
+sig
+  val uri : string
+  val run : body:string Deferred.t -> Cohttp_async.Request.t -> Cohttp_async.Server.response Deferred.t
+end
 
-(** [EchoMiddleware] pipe the body of the request to the body of the response
+(** [ApiMiddleware] pipe the body of the request to the body of the response
   *)
-module EchoMiddleware : Middleware =
-  struct
-    let run ~body (_request: Cohttp_async.Request.t) =
-    begin
-      body >>= Cohttp_async.Server.respond_with_string
-    end
+module ApiMiddleware : Middleware =
+struct
+  let uri = "/api/"
+  let run ~body (_request: Cohttp_async.Request.t) =
+  begin
+    body >>= Cohttp_async.Server.respond_with_string
   end
+end
 
+(** [TwipperMiddleware] respond to homepage requests, or defer to the api
+  *)
 module TwipperMiddleware : Middleware =
 struct
+  let uri = "/"
   let run ~body (request: Cohttp_async.Request.t) =
   begin
-    match request.meth, Uri.path request.uri with
+    let module R = Cohttp_async.Request in
+    match R.meth request, Uri.path (R.uri request) with
+    | _, uripath when String.is_prefix ~prefix:ApiMiddleware.uri uripath ->
+      let subpath = String.chop_prefix_exn ~prefix:ApiMiddleware.uri uripath in
+      let subrequest =
+        R.make
+          ~meth:(R.meth request)
+          ~version:(R.version request)
+          ~encoding:(R.encoding request)
+          ~headers:(R.headers request)
+          (Uri.with_path (R.uri request) subpath)
+      in
+      ApiMiddleware.run ~body subrequest
     | `GET, "/" ->
       (* homepage *)
       Cohttp_async.Server.respond_with_string "homepage"
