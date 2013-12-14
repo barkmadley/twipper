@@ -22,7 +22,7 @@ module EchoMiddleware : Middleware =
   * strip the socket option as I am currently not using it.
   *)
 let runmiddleware middleware ~body _socket _request =
-  let body_option = Option.map ~f:body_to_string body in
+  let body_option = Option.map ~f:Cohttp_async.body_to_string body in
   let body = Option.value ~default:(return "") body_option in
   middleware ~body _request
 
