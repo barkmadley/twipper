@@ -80,27 +80,57 @@ let start_server middleware ~port () =
   in
   Deferred.never ()
 
+let port_arg =
+  Command.Spec.(flag "-port" (optional_with_default 8080 int) ~doc:"port")
+
 (** A very basic command-line program, using Command, Core's Command line
   * parsing library.
   *)
-let start_server_command =
+let twipper_command =
   (** [Command.async_basic] is used for creating a command.
     * Every command takes a text summary and a command line spec
     *  as well as the commands implementation
     *)
   Command.async_basic
-    ~summary:"start server"
+    ~summary:"start twipper server"
     (** Command line specs are built up component by component, using a small
       * combinator library whose operators are contained in [Command.Spec]
       *)
     Command.Spec.(
       (** convert the port argument to a named argument *)
       step (fun m port -> m ~port)
-      +> flag "-port" (optional_with_default 8080 int) ~doc:"port"
+      +> port_arg
     )
     (** The command-line spec determines the argument to this function, which
       * show up in an order that matches the spec.
       *)
     (start_server TwipperMiddleware.run)
 
-let () = Command.run start_server_command
+let api_command =
+  (** [Command.async_basic] is used for creating a command.
+    * Every command takes a text summary and a command line spec
+    *  as well as the commands implementation
+    *)
+  Command.async_basic
+    ~summary:"start api server"
+    (** Command line specs are built up component by component, using a small
+      * combinator library whose operators are contained in [Command.Spec]
+      *)
+    Command.Spec.(
+      (** convert the port argument to a named argument *)
+      step (fun m port -> m ~port)
+      +> port_arg
+    )
+    (** The command-line spec determines the argument to this function, which
+      * show up in an order that matches the spec.
+      *)
+    (start_server ApiMiddleware.run)
+
+let group =
+  Command.group
+    ~summary:"Twipper"
+    [ "twipper", twipper_command ;
+      "api", api_command;
+    ]
+
+let () = Command.run group
