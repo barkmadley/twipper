@@ -12,10 +12,20 @@ end
   *)
 module ApiMiddleware : Middleware =
 struct
-  let uri = "/api/"
-  let run ~body (_request: Cohttp_async.Request.t) =
+  let uri = "/api"
+  let run ~body request =
   begin
-    body >>= Cohttp_async.Server.respond_with_string
+    let module R = Cohttp_async.Request in
+    let module S = Cohttp_async.Server in
+    match R.meth request, Uri.path (R.uri request) with
+    | `GET, "/" ->
+    begin
+      S.respond_with_string "root"
+    end
+    | _ ->
+    begin
+      S.respond_with_string "not root"
+    end
   end
 end
 
@@ -27,8 +37,9 @@ struct
   let run ~body request =
   begin
     let module R = Cohttp_async.Request in
+    let module S = Cohttp_async.Server in
     match R.meth request, Uri.path (R.uri request) with
-    | _, uripath when String.is_prefix ~prefix:ApiMiddleware.uri uripath ->
+    | _, uripath when String.is_prefix ~prefix:(ApiMiddleware.uri ^ "/") uripath ->
       let subpath = String.chop_prefix_exn ~prefix:ApiMiddleware.uri uripath in
       let subrequest =
         R.make
@@ -41,10 +52,10 @@ struct
       ApiMiddleware.run ~body subrequest
     | `GET, "/" ->
       (* homepage *)
-      Cohttp_async.Server.respond_with_string "homepage"
+      S.respond_with_string "homepage"
     | _ ->
     begin
-      Cohttp_async.Server.respond_with_string "not homepage"
+      S.respond_with_string "not homepage"
     end
   end
 end
