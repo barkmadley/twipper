@@ -23,12 +23,9 @@ module EchoMiddleware : Middleware =
   * strip the socket option as I am currently not using it.
   *)
 let runmiddleware middleware ~body _socket _request =
-  let pipe_content : string list Deferred.t  =
-    match body with
-    | None      -> return []
-    | Some pipe -> Pipe.to_list pipe
-  in
-  middleware ~body:pipe_content _request
+  let list_body_option = Option.map ~f:Pipe.to_list body in
+  let list_body = Option.value ~default:(return[]) list_body_option in
+  middleware ~body:list_body _request
 
 (** [start_server] with a particular middleware on a particular port *)
 let start_server middleware ~port () =
