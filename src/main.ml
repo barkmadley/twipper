@@ -24,7 +24,7 @@ end
 module TwipperMiddleware : Middleware =
 struct
   let uri = "/"
-  let run ~body (request: Cohttp_async.Request.t) =
+  let run ~body request =
   begin
     let module R = Cohttp_async.Request in
     match R.meth request, Uri.path (R.uri request) with
