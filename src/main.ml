@@ -17,6 +17,21 @@ module EchoMiddleware : Middleware =
     end
   end
 
+module TwipperMiddleware : Middleware =
+struct
+  let run ~body (request: Cohttp_async.Request.t) =
+  begin
+    match request.meth, Uri.path request.uri with
+    | `GET, "/" ->
+      (* homepage *)
+      Cohttp_async.Server.respond_with_string "homepage"
+    | _ ->
+    begin
+      Cohttp_async.Server.respond_with_string "not homepage"
+    end
+  end
+end
+
 (** [runmiddleware]
   * convert the string Pipe.Reader.t option to string list Deferred.t
   * strip the socket option as I am currently not using it.
@@ -58,6 +73,6 @@ let start_server_command =
     (** The command-line spec determines the argument to this function, which
       * show up in an order that matches the spec.
       *)
-    (start_server EchoMiddleware.run)
+    (start_server TwipperMiddleware.run)
 
 let () = Command.run start_server_command
