@@ -4,7 +4,7 @@ open Async.Std
 (** [Middleware] lazy body + request -> lazy response *)
 module type Middleware =
   sig
-    val run : body:string list Deferred.t -> Cohttp_async.Request.t -> Cohttp_async.Server.response Deferred.t
+    val run : body:string Deferred.t -> Cohttp_async.Request.t -> Cohttp_async.Server.response Deferred.t
   end
 
 (** [EchoMiddleware] pipe the body of the request to the body of the response
@@ -13,8 +13,7 @@ module EchoMiddleware : Middleware =
   struct
     let run ~body (_request: Cohttp_async.Request.t) =
     begin
-      body >>= fun lines ->
-      Cohttp_async.Server.respond_with_string (String.concat lines)
+      body >>= Cohttp_async.Server.respond_with_string
     end
   end
 
@@ -23,9 +22,9 @@ module EchoMiddleware : Middleware =
   * strip the socket option as I am currently not using it.
   *)
 let runmiddleware middleware ~body _socket _request =
-  let list_body_option = Option.map ~f:Pipe.to_list body in
-  let list_body = Option.value ~default:(return[]) list_body_option in
-  middleware ~body:list_body _request
+  let body_option = Option.map ~f:body_to_string body in
+  let body = Option.value ~default:(return "") body_option in
+  middleware ~body _request
 
 (** [start_server] with a particular middleware on a particular port *)
 let start_server middleware ~port () =
