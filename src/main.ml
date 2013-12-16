@@ -30,7 +30,7 @@ let port_arg =
 let group =
   Command.group
     ~summary:"Twipper"
-    [ App.command start_server port_arg;
+    [ (* App.command start_server port_arg; *)
       Api.command start_server port_arg;
     ]
 
