@@ -31,14 +31,16 @@ let tweep_to_html prefix suffix base_uri tweep =
   Printf.sprintf
 "
 %s
-  <a rel=self href=\"/tweep/%s\">self</a>
-  <a itemprop=user href=\"/user/%s\">User</a>
+<div itemtype=\"\">
+  <a rel=self href=\"%s/tweep/%s\">self</a>
+  <a itemprop=user href=\"%s/user/%s\">User</a>
   <span itemprop=text>%s</span>
+</div>
 %s
 "
   prefix
-  (Tweep_UUID.to_string tweep.uuid)
-  (User_UUID.to_string tweep.user_uuid)
+  base_uri (Tweep_UUID.to_string tweep.uuid)
+  base_uri (User_UUID.to_string tweep.user_uuid)
   tweep.text
   suffix
 
@@ -47,7 +49,7 @@ let tweep_to_html prefix suffix base_uri tweep =
 module App : Middleware =
 struct
   let uri = "/api"
-  let run ~body request =
+  let run ~body ~host request =
   begin
     let module R = Cohttp_async.Request in
     let module S = Cohttp_async.Server in
@@ -67,7 +69,7 @@ struct
   </body>
 </html>
 "
-        (String.concat ~sep:"\n" (List.map ~f:(tweep_to_html "<li>" "</li>" "/") tweeps))
+        (String.concat ~sep:"\n" (List.map ~f:(tweep_to_html "<li>" "</li>" host) tweeps))
       )
     end
     | `GET, uri when String.is_prefix uri ~prefix:"/tweep/" ->
@@ -88,7 +90,7 @@ struct
   </body>
 </html>
 "
-            (tweep_to_html "" "" "/" tweep)
+            (tweep_to_html "" "" host tweep)
           )
     end
     | _, uri ->
@@ -101,7 +103,7 @@ end
 (** Given a way to start the server, and a way to parse the port argument:
   *   return the (command name, Command.t) pair used to create sub commands
   *)
-let command start_server port_arg =
+let command start_server port_arg host_arg : string * Command.t =
   (** [Command.async_basic] is used for creating a command.
     * Every command takes a text summary and a command line spec
     *  as well as the commands implementation
@@ -114,8 +116,9 @@ let command start_server port_arg =
       *)
     Command.Spec.(
       (** convert the port argument to a named argument *)
-      step (fun m port -> m ~port)
+      step (fun m port host -> m ~port ~host)
       +> port_arg
+      +> host_arg
     )
     (** The command-line spec determines the argument to this function, which
       * show up in an order that matches the spec.
