@@ -66,10 +66,16 @@ struct
     <ul>
       %s
     </ul>
+    <form data-rel=\"tweep\" method=\"POST\" action=\"%s/tweep\">
+      <input type=hidden name=user_uuid value=\"%s\" />
+      <input type=text name=text />
+    </form>
   </body>
 </html>
 "
         (String.concat ~sep:"\n" (List.map ~f:(tweep_to_html "<li>" "</li>" host) tweeps))
+        host
+        (User_UUID.to_string users.uuid)
       )
     end
     | `GET, uri when String.is_prefix uri ~prefix:"/tweep/" ->
