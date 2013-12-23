@@ -130,6 +130,19 @@ let tweep_form post_uri user_uuid =
     </form>
   >>
 
+let tweep_list tweep_html_ts =
+  let tweep_htmls : Html.t list =
+    List.map ~f:html_of_tweep_html_t tweep_html_ts
+  in
+  let tweep_htmls : Html.t list =
+    List.map ~f:(fun html -> <:html< <li>$html$</li> >>) tweep_htmls
+  in
+  <:html<
+    <ul>
+      $list:tweep_htmls$
+    </ul>
+  >>
+
 (** [App]
   *)
 module App : Middleware =
@@ -141,14 +154,39 @@ struct
     let module S = Cohttp_async.Server in
     let () = Printf.printf "%s\n" (Uri.path (R.uri request)) in
     match R.meth request, Uri.path (R.uri request) with
-    | `GET, "/test" ->
+    | `GET, "/inline-repr" ->
     begin
+      (** Inline the representation of users by passing
+        * the user flag to tweep_to_tweep_html_t
+        *)
+      let tweep_html_ts : tweep_html_t list =
+        List.map ~f:(fun tweep ->
+          tweep_to_tweep_html_t (user_uuid_to_user_uri host) (tweep_uuid_to_tweep_uri host) ~user:users tweep
+        ) !tweeps
+      in
+      let post_uri = host ^ "/tweep" in
+      let html =
+        <:html<
+          <html>
+            <body>
+              $ tweep_list tweep_html_ts $
+              $ tweep_form post_uri users.uuid $
+            </body>
+          </html>
+        >>
+      in
+      S.respond_with_string (Html.to_string html)
+    end
+    | `GET, "/inline-link" ->
+    begin
+      (** Inline the links of users by not passing the user flag to
+        * tweep_to_tweep_html_t, instead passing a custom uri function
+        * that refers to an html node in the local document
+        *)
       let user_html_t =
         user_to_user_html_t (user_uuid_to_user_uri host) users
       in
-      let user_html =
-        html_of_user_html_t user_html_t
-      in
+      let user_html = html_of_user_html_t user_html_t in
       let user_inline_link user_uuid =
         "#" ^ (User_UUID.to_string user_uuid)
       in
@@ -157,21 +195,13 @@ struct
           tweep_to_tweep_html_t user_inline_link (tweep_uuid_to_tweep_uri host) tweep
         ) !tweeps
       in
-      let tweep_htmls : Html.t list =
-        List.map ~f:html_of_tweep_html_t tweep_html_ts
-      in
-      let tweep_htmls : Html.t list =
-        List.map ~f:(fun html -> <:html< <li>$html$</li> >>) tweep_htmls
-      in
       let post_uri = host ^ "/tweep" in
       let html =
         <:html<
           <html>
             <body>
-              $user_html$
-              <ul>
-                $list: tweep_htmls$
-              </ul>
+              $ user_html $
+              $ tweep_list tweep_html_ts $
               $ tweep_form post_uri users.uuid $
             </body>
           </html>
@@ -181,25 +211,21 @@ struct
     end
     | `GET, "/" ->
     begin
+      (** Don't inline the links to users by not passing the user flag to
+        * tweep_to_tweep_html_t. The user uri function refers to the canonical
+        * uri for that user
+        *)
       let tweep_html_ts : tweep_html_t list =
         List.map ~f:(fun tweep ->
-          tweep_to_tweep_html_t (user_uuid_to_user_uri host) (tweep_uuid_to_tweep_uri host) ~user:users tweep
+          tweep_to_tweep_html_t (user_uuid_to_user_uri host) (tweep_uuid_to_tweep_uri host) tweep
         ) !tweeps
-      in
-      let tweep_htmls : Html.t list =
-        List.map ~f:html_of_tweep_html_t tweep_html_ts
-      in
-      let tweep_htmls : Html.t list =
-        List.map ~f:(fun html -> <:html< <li>$html$</li> >>) tweep_htmls
       in
       let post_uri = host ^ "/tweep" in
       let html =
         <:html<
           <html>
             <body>
-              <ul>
-                $list: tweep_htmls$
-              </ul>
+              $ tweep_list tweep_html_ts $
               $ tweep_form post_uri users.uuid $
             </body>
           </html>
