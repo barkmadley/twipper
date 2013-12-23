@@ -1,11 +1,94 @@
 open Core.Std
 open Async.Std
 
+open Cow
+
 open Middleware
 
 open User
 open Tweep
 
+type ('inline, 'linked) inlined_html_t =
+  | Inline of 'inline
+  | Linked of 'linked
+
+let html_of_inlined_html_t html_of_inline html_of_linked inlined_html_t =
+  match inlined_html_t with
+  | Inline inline -> html_of_inline inline
+  | Linked linked -> html_of_linked linked
+
+type self_uri_t = Uri.t
+type prop_uri_t = (string * Uri.t)
+
+let html_of_self_uri_t uri_t =
+  <:html<
+    <a rel="self" href="$str:Uri.to_string uri_t$">self</a>
+  >>
+
+let html_of_prop_uri_t (prop,uri_t) =
+  <:html<
+    <a itemprop="$str:prop$" href="$str:Uri.to_string uri_t$">$str:prop$</a>
+  >>
+
+type user_html_t =
+  {
+    self : self_uri_t;
+    uuid : User_UUID.t;
+    handle : string;
+  }
+
+let html_of_user_html_t (user_html_t: user_html_t) =
+  <:html<
+    <div id="$str:User_UUID.to_string user_html_t.uuid$" itemscope="itemscope" itemtype="http://schema.org/Person">
+      $ html_of_self_uri_t user_html_t.self $
+      <div itemprop="handle">$str: user_html_t.handle $</div>
+    </div>
+  >>
+
+let html_of_prop_user_html_t (prop, user_html_t) =
+  <:html<
+    <div itemprop="$str:prop$" itemscope="itemscope" itemtype="http://schema.org/Person">
+      $ html_of_self_uri_t user_html_t.self $
+      <div itemprop="handle">$str: user_html_t.handle $</div>
+    </div>
+  >>
+
+let user_to_user_html_t to_user_uri (user : user) =
+  {
+    self = Uri.of_string (to_user_uri user.uuid);
+    uuid = user.uuid;
+    handle = user.name;
+  }
+
+type tweep_html_t =
+  {
+    self : Uri.t;
+    uuid : Tweep_UUID.t;
+    user : ((string * user_html_t), prop_uri_t) inlined_html_t;
+    text : Html.t;
+  }
+
+let html_of_tweep_html_t (tweep_html_t: tweep_html_t) =
+  <:html<
+    <div id="$str:Tweep_UUID.to_string tweep_html_t.uuid$" itemscope="itemscope" itemtype="test">
+      $ html_of_self_uri_t tweep_html_t.self $
+      $ html_of_inlined_html_t html_of_prop_user_html_t html_of_prop_uri_t tweep_html_t.user $
+      <div itemprop="text">$ tweep_html_t.text $</div>
+    </div>
+  >>
+
+let tweep_to_tweep_html_t to_user_uri to_tweep_uri ?user tweep =
+  let user =
+    match user with
+    | None -> Linked ("user", Uri.of_string (to_user_uri tweep.user_uuid))
+    | Some user -> Inline ("user", user_to_user_html_t to_user_uri user)
+  in
+  {
+    self = Uri.of_string (to_tweep_uri tweep.uuid);
+    uuid = tweep.uuid;
+    text = <:html<$str: tweep.text$>>;
+    user = user;
+  }
 
 let users =
   {
@@ -27,28 +110,25 @@ let tweeps = ref
     };
   ]
 
-let tweep_uri base_uri tweep =
-  Printf.sprintf "%s/tweep/%s" base_uri (Tweep_UUID.to_string tweep.uuid)
+let tweep_uuid_to_tweep_uri base_uri tweep_uuid =
+  Printf.sprintf "%s/tweep/%s" base_uri (Tweep_UUID.to_string tweep_uuid)
 
-let user_uri base_uri user_uuid =
+let tweep_uri base_uri (tweep: tweep) =
+  tweep_uuid_to_tweep_uri base_uri tweep.uuid
+
+let user_uuid_to_user_uri base_uri user_uuid =
   Printf.sprintf "%s/user/%s" base_uri (User_UUID.to_string user_uuid)
 
-let tweep_to_html prefix suffix base_uri tweep =
-  Printf.sprintf
-"
-%s
-<div itemtype=\"\">
-  <a rel=self href=\"%s\">self</a>
-  <a itemprop=user href=\"%s\">User</a>
-  <span itemprop=text>%s</span>
-</div>
-%s
-"
-  prefix
-  (tweep_uri base_uri tweep)
-  (user_uri base_uri tweep.user_uuid)
-  tweep.text
-  suffix
+let user_uri base_uri user_uuid =
+  user_uuid_to_user_uri base_uri user_uuid
+
+let tweep_form post_uri user_uuid =
+  <:html<
+    <form data-rel="tweep" method="POST" action="$str:post_uri$">
+      <input type="hidden" name="user_uuid" value="$str:User_UUID.to_string user_uuid$" />
+      <input type="text" name="text" />
+    </form>
+  >>
 
 (** [App]
   *)
@@ -61,29 +141,71 @@ struct
     let module S = Cohttp_async.Server in
     let () = Printf.printf "%s\n" (Uri.path (R.uri request)) in
     match R.meth request, Uri.path (R.uri request) with
+    | `GET, "/test" ->
+    begin
+      let user_html_t =
+        user_to_user_html_t (user_uuid_to_user_uri host) users
+      in
+      let user_html =
+        html_of_user_html_t user_html_t
+      in
+      let user_inline_link user_uuid =
+        "#" ^ (User_UUID.to_string user_uuid)
+      in
+      let tweep_html_ts : tweep_html_t list =
+        List.map ~f:(fun tweep ->
+          tweep_to_tweep_html_t user_inline_link (tweep_uuid_to_tweep_uri host) tweep
+        ) !tweeps
+      in
+      let tweep_htmls : Html.t list =
+        List.map ~f:html_of_tweep_html_t tweep_html_ts
+      in
+      let tweep_htmls : Html.t list =
+        List.map ~f:(fun html -> <:html< <li>$html$</li> >>) tweep_htmls
+      in
+      let post_uri = host ^ "/tweep" in
+      let html =
+        <:html<
+          <html>
+            <body>
+              $user_html$
+              <ul>
+                $list: tweep_htmls$
+              </ul>
+              $ tweep_form post_uri users.uuid $
+            </body>
+          </html>
+        >>
+      in
+      S.respond_with_string (Html.to_string html)
+    end
     | `GET, "/" ->
     begin
-      S.respond_with_string (
-        Printf.sprintf
-"
-<html>
-  <body>
-    <ul>
-      %s
-    </ul>
-    <form data-rel=\"tweep\" method=\"POST\" action=\"%s/tweep\">
-      <input type=\"hidden\" name=\"user_uuid\" value=\"%s\" />
-      <input type=\"text\" name=\"text\" />
-    </form>
-  </body>
-</html>
-"
-        ( String.concat ~sep:"\n" (
-            List.map ~f:(tweep_to_html "<li>" "</li>" host) !tweeps)
-        )
-        host
-        (User_UUID.to_string users.uuid)
-      )
+      let tweep_html_ts : tweep_html_t list =
+        List.map ~f:(fun tweep ->
+          tweep_to_tweep_html_t (user_uuid_to_user_uri host) (tweep_uuid_to_tweep_uri host) ~user:users tweep
+        ) !tweeps
+      in
+      let tweep_htmls : Html.t list =
+        List.map ~f:html_of_tweep_html_t tweep_html_ts
+      in
+      let tweep_htmls : Html.t list =
+        List.map ~f:(fun html -> <:html< <li>$html$</li> >>) tweep_htmls
+      in
+      let post_uri = host ^ "/tweep" in
+      let html =
+        <:html<
+          <html>
+            <body>
+              <ul>
+                $list: tweep_htmls$
+              </ul>
+              $ tweep_form post_uri users.uuid $
+            </body>
+          </html>
+        >>
+      in
+      S.respond_with_string (Html.to_string html)
     end
     | `POST, "/tweep" ->
     begin
@@ -104,7 +226,7 @@ struct
         Cohttp.Header.init_with "location" (tweep_uri host new_tweep)
       in
       let body = Pipe.of_list [body] in
-      return (S.respond ~headers `Created ~body:(Some body))
+      return (S.respond ~headers `Created ~body)
     end
     | `GET, uri when String.is_prefix uri ~prefix:"/tweep/" ->
     begin
@@ -112,20 +234,22 @@ struct
       | None -> S.respond_with_string "404" (* Should not happen *)
       | Some suffix ->
         let uuid_suffix = Tweep_UUID.of_string suffix in
-        match List.findi ~f:(fun i t -> t.uuid = uuid_suffix) !tweeps with
+        match List.findi ~f:(fun i (t:tweep) -> t.uuid = uuid_suffix) !tweeps with
         | None -> S.respond_with_string "404"
         | Some (i, tweep) ->
-          S.respond_with_string (
-            Printf.sprintf
-"
-<html>
-  <body>
-      %s
-  </body>
-</html>
-"
-            (tweep_to_html "" "" host tweep)
-          )
+          let tweep_html_t =
+            tweep_to_tweep_html_t (user_uuid_to_user_uri host) (tweep_uuid_to_tweep_uri host) tweep
+          in
+          let html =
+            <:html<
+              <html>
+                <body>
+                  $html_of_tweep_html_t tweep_html_t$
+                </body>
+              </html>
+            >>
+          in
+          S.respond_with_string (Html.to_string html)
     end
     | _, uri ->
     begin
