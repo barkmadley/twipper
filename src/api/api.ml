@@ -152,7 +152,7 @@ struct
   begin
     let module R = Cohttp_async.Request in
     let module S = Cohttp_async.Server in
-    let () = Printf.printf "%s\n" (Uri.path (R.uri request)) in
+    let () = ignore (printf "%s\n" (Uri.path (R.uri request))) in
     match R.meth request, Uri.path (R.uri request) with
     | `GET, "/inline-repr" ->
     begin
@@ -200,9 +200,9 @@ struct
         <:html<
           <html>
             <body>
-              $ user_html $
               $ tweep_list tweep_html_ts $
               $ tweep_form post_uri users.uuid $
+              $ user_html $
             </body>
           </html>
         >>
@@ -235,7 +235,7 @@ struct
     end
     | `POST, "/tweep" ->
     begin
-      body >>= fun body ->
+      body >>= fun (body : string) ->
       let post_body = Uri.query_of_encoded body in
       let text_o = List.Assoc.find post_body "text" in
       let text_s = Option.value text_o ~default:[] in
@@ -252,7 +252,7 @@ struct
         Cohttp.Header.init_with "location" (tweep_uri host new_tweep)
       in
       let body = Pipe.of_list [body] in
-      return (S.respond ~headers `Created ~body)
+      (S.respond ~headers ~body:(Cohttp_async.Body.of_pipe body) `Created )
     end
     | `GET, uri when String.is_prefix uri ~prefix:"/tweep/" ->
     begin

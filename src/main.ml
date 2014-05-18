@@ -9,9 +9,9 @@ open Middleware
   * strip the socket option as I am currently not using it.
   *)
 let runmiddleware middleware host ~body _socket request =
-  let body_option = Option.map ~f:Cohttp_async.body_to_string body in
-  let body = Option.value ~default:(return "") body_option in
-  middleware ~body ~host request
+  (* let body_option = Option.map ~f:Cohttp_async.body_to_string body in *)
+  (* let body = Option.value ~default:(return "") body_option in *)
+  middleware ~body:(Cohttp_async.Body.to_string body) ~host request
 
 (** [start_server] with a particular middleware on a particular port *)
 let start_server middleware ~port ~host () =
