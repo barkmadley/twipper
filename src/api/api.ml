@@ -277,6 +277,26 @@ struct
           in
           S.respond_with_string (Html.to_string html)
     end
+    | `GET, uri when String.is_prefix uri ~prefix:"/user/" ->
+    begin
+      match String.chop_prefix ~prefix:"/user/" uri with
+      | None -> S.respond_with_string "404" (* Should not happen *)
+      | Some suffix ->
+        let uuid_suffix = User_UUID.of_string suffix in
+        let user_html_t =
+          user_to_user_html_t (user_uuid_to_user_uri host) users
+        in
+        let html =
+          <:html<
+            <html>
+              <body>
+                $html_of_user_html_t user_html_t$
+              </body>
+            </html>
+          >>
+        in
+        S.respond_with_string (Html.to_string html)
+    end
     | _, uri ->
     begin
       S.respond_with_string ("not root:" ^ uri)
